@@ -1,0 +1,27 @@
+[package]
+name = "opentx-exchange"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.66"
+ckb-crypto = "0.105.1"
+ckb-hash = "0.105.1"
+ckb-jsonrpc-types = "0.105.1"
+ckb-sdk = { git = "https://github.com/liuck8080/ckb-sdk-rust.git", branch = "opentx_sign_tx", version = "2.3.0" }
+ckb-types = "0.105.1"
+clap = { version = "4.0.25", features = ["derive"] }
+env_logger = "0.9.3"
+log = "0.4.17"
+secp256k1 = "0.24.1"
+serde = { version = "1.0.147", features = ["derive"] }
+serde_json = "1.0.87"
+reqwest = { version = "0.11", features = ["json", "blocking"] }
+jsonrpc-core = "18.0"
+jsonrpc-derive = "18.0"
+jsonrpc-http-server = "18.0"
+jsonrpc-server-utils = "18.0"
+dashmap = "5.4.0"
+ctrlc = "3.2.3"
