@@ -27,6 +27,7 @@ struct Cli {
 enum Commands {
     /// Generate and sign an order transaction (partial open transaction)
     GenOrder(tx_builder::GenOrderArgs),
+    /// Merge multiple order transactions into one transaction
     MergeOrders(tx_builder::MergeOrdersArgs),
     /// Issue some xUDT amount to address
     IssueUdt(tx_builder::IssueUdtArgs),
