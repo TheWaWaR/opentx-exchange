@@ -89,16 +89,21 @@ impl OrderKey {
 impl ExchangeRpc for ExchangeRpcImpl {
     fn send_order(&self, tx: Transaction) -> RpcResult<String> {
         let mut ckb_client = CkbRpcClient::new(self.ckb_rpc.as_str());
+        let omni_dep_item = self
+            .cell_deps
+            .get_item(&CellDepName::OmniLock)
+            .expect("omni-lock cell dep");
         let xudt_dep_item = self
             .cell_deps
             .get_item(&CellDepName::Xudt)
             .expect("xudt cell dep");
+        let omni_script_id = ScriptId::from(omni_dep_item.script_id.clone());
         let xudt_script_id = ScriptId::from(xudt_dep_item.script_id.clone());
 
         let mut lock_script_opt = None;
         #[allow(clippy::mutable_key_type)]
         let mut xudt_scripts = HashMap::new();
-        for input in &tx.inputs {
+        for (input_idx, input) in tx.inputs.iter().enumerate() {
             let result = ckb_client
                 .get_live_cell(input.previous_output.clone(), true)
                 .map_err(|err| {
@@ -109,6 +114,14 @@ impl ExchangeRpc for ExchangeRpcImpl {
                 return Err(Error::invalid_params("canceled transaction"));
             }
             let cell = result.cell.unwrap();
+            if cell.output.lock.code_hash != omni_script_id.code_hash
+                || cell.output.lock.hash_type != omni_script_id.hash_type.into()
+            {
+                return Err(Error::invalid_params(format!(
+                    "inputs[{}] is not omni lock script",
+                    input_idx,
+                )));
+            }
             if let Some(udt_script) = cell.output.type_.as_ref() {
                 if lock_script_opt.is_none() {
                     lock_script_opt = Some(cell.output.lock);
@@ -190,7 +203,7 @@ impl ExchangeRpc for ExchangeRpcImpl {
                 send_tx_to_ckb(assembled_tx, self.ckb_rpc.as_str()).map_err(|err| {
                     Error::invalid_params(format!("send assembled tx to ckb error: {}", err))
                 })?;
-                log::info!("remove matched hash: {:#x}", pair_tx_hash);
+                log::info!("remove matched tx: {:#x}", pair_tx_hash);
                 self.remove_tx(pair_tx_hash);
 
                 return Ok(format!(
@@ -301,6 +314,7 @@ impl ExchangeRpc for ExchangeRpcImpl {
 
         // clean up canceled transactions
         for tx_hash in canceled_txs {
+            log::info!("remove canceled tx: {:#x}", tx_hash);
             self.remove_tx(&tx_hash);
         }
         Ok(txs)

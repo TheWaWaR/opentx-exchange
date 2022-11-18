@@ -34,6 +34,7 @@ use ckb_types::{
     H160, H256,
 };
 use clap::Args;
+use rand::Rng;
 use secp256k1::{PublicKey, SecretKey};
 
 use crate::cell_dep::{CellDepName, CellDeps};
@@ -563,9 +564,9 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
             .get_live_cell(input.previous_output.clone(), false)?
             .status;
         log::debug!(
-            "input.out_point: {:?}, status: {}",
-            input.previous_output,
-            status
+            "status: {}, input.out_point: {}",
+            status,
+            serde_json::to_string_pretty(&input.previous_output).unwrap(),
         );
         if status != "live" {
             return Err(anyhow!("The transaction already canceled"));
@@ -584,7 +585,7 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
 
     let sender_privkey = SecretKey::from_slice(args.sender_key.as_bytes())
         .map_err(|err| anyhow!("invalid sender secret key: {}", err))?;
-    let (omni_lock_config, omni_lock_script, sighash_lock_script) = {
+    let (mut omni_lock_config, omni_lock_script, sighash_lock_script) = {
         let sender_pubkey = PublicKey::from_secret_key(&SECP256K1, &sender_privkey);
         let sender_pubkey_hash =
             H160::from_slice(&blake2b_256(&sender_pubkey.serialize()[..])[0..20]).unwrap();
@@ -629,7 +630,11 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
     let tx_inputs = vec![CellInput::from(json_tx.inner.inputs[0].clone())];
 
     let mut unlockers = if output.lock() == omni_lock_script {
-        build_omnilock_unlockers(vec![sender_privkey], omni_lock_config, omni_script_id)
+        build_omnilock_unlockers(
+            vec![sender_privkey],
+            omni_lock_config.clone(),
+            omni_script_id.clone(),
+        )
     } else {
         HashMap::new()
     };
@@ -644,8 +649,12 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
     let placeholder_witness = WitnessArgs::new_builder()
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
         .build();
-    let balancer =
-        CapacityBalancer::new_simple(sighash_lock_script, placeholder_witness, args.fee_rate);
+    let balancer = CapacityBalancer::new_simple(
+        sighash_lock_script,
+        placeholder_witness,
+        // FIXME: this is only work around.
+        args.fee_rate + 200,
+    );
     let mut cell_collector = DefaultCellCollector::new(args.ckb_rpc.as_str());
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 0);
     let header_dep_resolver = DefaultHeaderDepResolver::new(args.ckb_rpc.as_str());
@@ -657,6 +666,11 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
         .outputs_data(vec![output_data.pack()].pack())
         .build();
     let (tx, _) = fill_placeholder_witnesses(base_tx, &tx_dep_provider, &unlockers)?;
+
+    log::debug!(
+        "> tx: {}",
+        serde_json::to_string_pretty(&json_types::TransactionView::from(tx.clone()))?
+    );
     let tx = balance_tx_capacity(
         &tx,
         &balancer,
@@ -665,6 +679,17 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
         &cell_dep_resolver,
         &header_dep_resolver,
     )?;
+
+    let mut rng = rand::thread_rng();
+    let salt: u32 = rng.gen();
+    let wit = OpentxWitness::new_sig_all_relative(&tx, Some(salt))?;
+    omni_lock_config.set_opentx_input(wit);
+    unlockers.extend(build_omnilock_unlockers(
+        vec![sender_privkey],
+        omni_lock_config,
+        omni_script_id,
+    ));
+
     let (tx, still_locked_groups) = unlock_tx(tx, &tx_dep_provider, &unlockers)?;
     log::debug!("still locked groups: {:?}", still_locked_groups);
     assert!(still_locked_groups.is_empty());

@@ -135,10 +135,10 @@ pub fn explain_orders(txs: &[TransactionView], cell_deps: &CellDeps, ckb_rpc: &s
             "unknown"
         };
         log::info!(
-            "{}[{}]: {} lock, address={}",
+            "  {}[{}]: {} lock, address={}",
             label,
-            lock_category,
             idx,
+            lock_category,
             address
         );
         if output
@@ -149,7 +149,7 @@ pub fn explain_orders(txs: &[TransactionView], cell_deps: &CellDeps, ckb_rpc: &s
             == Some(&xudt_script_id)
         {
             let amount = u128::from_le_bytes(data.as_ref()[0..16].try_into().unwrap());
-            log::info!("{}[{}]: udt-amount={}", label, idx, amount);
+            log::info!("  {}[{}]: udt-amount={}", label, idx, amount);
         };
     };
 
