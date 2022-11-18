@@ -10,7 +10,8 @@ use std::{error::Error as StdErr, fs, path::PathBuf};
 use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{serialize_parameters, Address};
 use ckb_types::packed::Transaction;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use serde_json::to_string_pretty;
 
 use cell_dep::CellDeps;
@@ -43,7 +44,7 @@ enum Commands {
         sighash_address: Address,
 
         /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-        #[clap(long, value_name = "PATH")]
+        #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
         cell_deps: PathBuf,
 
         /// Build mainnet address
@@ -104,11 +105,28 @@ enum Commands {
         query_args: QueryArgs,
     },
 
-    /// Generate example cell_deps.json
-    GenExampleCellDeps {
+    /// Query udt amount by owner and omni-lock address
+    QueryUdtAmount {
+        /// The owner address of the xUDT (admin)
+        #[clap(long, value_name = "ADDRESS")]
+        owner: Address,
+
+        /// The address of the xUDT cell below to, this is an omni-lock address
+        #[clap(long, value_name = "ADDRESS")]
+        address: Address,
+
         /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-        #[clap(long, value_name = "PATH")]
+        #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
         cell_deps: PathBuf,
+
+        /// CKB rpc url
+        #[clap(
+            long,
+            value_name = "URL",
+            env = "CKB_RPC",
+            default_value = "http://127.0.0.1:8114"
+        )]
+        ckb_rpc: String,
     },
 
     /// Start exchange jsonrpc server
@@ -118,19 +136,38 @@ enum Commands {
         bind: String,
 
         /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-        #[clap(long, value_name = "PATH")]
+        #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
         cell_deps: PathBuf,
 
         /// CKB rpc url
-        #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+        #[clap(
+            long,
+            value_name = "URL",
+            env = "CKB_RPC",
+            default_value = "http://127.0.0.1:8114"
+        )]
         ckb_rpc: String,
+    },
+
+    /// Generate example cell_deps.json
+    GenExampleCellDeps {
+        /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
+        #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
+        cell_deps: PathBuf,
+    },
+
+    /// Generate shell completer
+    GenShellComplete {
+        /// The shell type
+        #[clap(long, value_name = "SHELL")]
+        shell: Shell,
     },
 }
 
 #[derive(Args, Debug)]
 struct QueryArgs {
     /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-    #[clap(long, value_name = "PATH")]
+    #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
     cell_deps: PathBuf,
 
     /// Exchange rpc url
@@ -138,7 +175,12 @@ struct QueryArgs {
     exchange_rpc: String,
 
     /// CKB rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "CKB_RPC",
+        default_value = "http://127.0.0.1:8114"
+    )]
     ckb_rpc: String,
 }
 
@@ -243,6 +285,18 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             )?;
             util::explain_orders(&txs, &cell_deps, query_args.ckb_rpc.as_str())?;
         }
+        Commands::QueryUdtAmount {
+            owner,
+            address,
+            cell_deps,
+            ckb_rpc,
+        } => {
+            let content = fs::read_to_string(cell_deps)?;
+            let cell_deps: CellDeps = serde_json::from_str(&content)?;
+            let amounts = util::query_udt_amount(&owner, &address, &cell_deps, ckb_rpc.as_str())?;
+            log::info!("amounts: {:?}", amounts);
+            log::info!("total amount: {}", amounts.iter().sum::<u128>());
+        }
         Commands::StartExchange {
             bind,
             cell_deps,
@@ -253,6 +307,11 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         Commands::GenExampleCellDeps { cell_deps } => {
             let example = CellDeps::gen_example();
             fs::write(&cell_deps, to_string_pretty(&example).unwrap())?;
+        }
+        Commands::GenShellComplete { shell } => {
+            let mut cmd = Cli::command();
+            let cmd_name = cmd.get_name().to_string();
+            generate(shell, &mut cmd, cmd_name, &mut std::io::stdout());
         }
     }
     Ok(())

@@ -1,8 +1,11 @@
 use anyhow::{anyhow, Result};
 use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{
-    constants::SIGHASH_TYPE_HASH, rpc::CkbRpcClient, unlock::OmniLockConfig, Address,
-    AddressPayload, NetworkType, ScriptId,
+    constants::SIGHASH_TYPE_HASH,
+    rpc::CkbRpcClient,
+    traits::{CellCollector, CellQueryOptions, DefaultCellCollector, ValueRangeOption},
+    unlock::OmniLockConfig,
+    Address, AddressPayload, NetworkType, ScriptId,
 };
 use ckb_types::{
     bytes::Bytes,
@@ -35,7 +38,7 @@ pub fn build_omni_lock_config(sighash_address: &Address) -> Result<OmniLockConfi
         ));
     }
 
-    let arg = H160::from_slice(script.args().as_slice()).unwrap();
+    let arg = H160::from_slice(script.args().raw_data().as_ref()).unwrap();
     let mut config = OmniLockConfig::new_pubkey_hash(arg);
     config.set_opentx_mode();
     Ok(config)
@@ -63,6 +66,37 @@ pub fn build_omni_lock_address(
         config.build_args(),
     );
     Ok(Address::new(network, payload, true))
+}
+
+pub fn query_udt_amount(
+    owner: &Address,
+    address: &Address,
+    cell_deps: &CellDeps,
+    ckb_rpc: &str,
+) -> Result<Vec<u128>> {
+    let xudt_dep_item = cell_deps
+        .get_item(&CellDepName::Xudt)
+        .expect("xudt cell dep");
+    let xudt_script_id = ScriptId::from(xudt_dep_item.script_id.clone());
+    let type_script = {
+        let owner_lock_hash = Script::from(owner).calc_script_hash();
+        xudt_script_id
+            .dummy_script()
+            .as_builder()
+            .args(owner_lock_hash.as_bytes().pack())
+            .build()
+    };
+    let lock_script = Script::from(address);
+
+    let mut cell_collector = DefaultCellCollector::new(ckb_rpc);
+    let mut query = CellQueryOptions::new_lock(lock_script);
+    query.data_len_range = Some(ValueRangeOption::new_min(16));
+    query.secondary_script = Some(type_script);
+    let (cells, _) = cell_collector.collect_live_cells(&query, false)?;
+    Ok(cells
+        .into_iter()
+        .map(|cell| u128::from_le_bytes(cell.output_data.as_ref()[0..16].try_into().unwrap()))
+        .collect::<Vec<_>>())
 }
 
 pub fn send_tx_to_ckb(tx: TransactionView, ckb_rpc: &str) -> Result<()> {

@@ -24,7 +24,7 @@ use ckb_sdk::{
         OmniLockConfig, OmniLockScriptSigner, SecpSighashUnlocker,
     },
     unlock::{OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker},
-    Address, HumanCapacity, ScriptId, SECP256K1,
+    Address, AddressPayload, HumanCapacity, NetworkType, ScriptId, SECP256K1,
 };
 use ckb_types::{
     bytes::Bytes,
@@ -61,7 +61,7 @@ pub struct GenOrderArgs {
     amount_buy: u128,
 
     /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-    #[clap(long, value_name = "PATH")]
+    #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
     cell_deps: PathBuf,
 
     /// The transaction fee of this order transaction
@@ -73,7 +73,12 @@ pub struct GenOrderArgs {
     pub tx_file: PathBuf,
 
     /// CKB rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "CKB_RPC",
+        default_value = "http://127.0.0.1:8114"
+    )]
     pub ckb_rpc: String,
 }
 
@@ -84,7 +89,7 @@ pub struct MergeOrdersArgs {
     order_tx: Vec<PathBuf>,
 
     /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-    #[clap(long, value_name = "PATH")]
+    #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
     cell_deps: PathBuf,
 
     /// The output transaction info file (.json)
@@ -92,7 +97,12 @@ pub struct MergeOrdersArgs {
     pub tx_file: PathBuf,
 
     /// CKB rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "CKB_RPC",
+        default_value = "http://127.0.0.1:8114"
+    )]
     pub ckb_rpc: String,
 }
 
@@ -111,7 +121,7 @@ pub struct IssueUdtArgs {
     amount: u128,
 
     /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-    #[clap(long, value_name = "PATH")]
+    #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
     cell_deps: PathBuf,
 
     /// The fee rate of this transaction
@@ -119,7 +129,12 @@ pub struct IssueUdtArgs {
     fee_rate: u64,
 
     /// CKB rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "CKB_RPC",
+        default_value = "http://127.0.0.1:8114"
+    )]
     pub ckb_rpc: String,
 }
 
@@ -134,7 +149,7 @@ pub struct NewEmptyUdtCellArgs {
     owner: Address,
 
     /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-    #[clap(long, value_name = "PATH")]
+    #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
     cell_deps: PathBuf,
 
     /// The fee rate of this transaction
@@ -142,7 +157,12 @@ pub struct NewEmptyUdtCellArgs {
     fee_rate: u64,
 
     /// CKB rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "CKB_RPC",
+        default_value = "http://127.0.0.1:8114"
+    )]
     pub ckb_rpc: String,
 }
 
@@ -157,7 +177,7 @@ pub struct CancelOrderArgs {
     tx_file: PathBuf,
 
     /// The cell deps information (for resolve cell_dep by script id or build lock/type script, json format)
-    #[clap(long, value_name = "PATH")]
+    #[clap(long, env = "CELL_DEPS", value_name = "PATH")]
     cell_deps: PathBuf,
 
     /// The fee rate of this transaction
@@ -165,7 +185,12 @@ pub struct CancelOrderArgs {
     fee_rate: u64,
 
     /// CKB rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "CKB_RPC",
+        default_value = "http://127.0.0.1:8114"
+    )]
     pub ckb_rpc: String,
 }
 
@@ -183,16 +208,10 @@ pub fn build_order_tx(args: &GenOrderArgs) -> Result<TransactionView> {
 
     let sender_privkey = SecretKey::from_slice(args.sender_key.as_bytes())
         .map_err(|err| anyhow!("invalid sender secret key: {}", err))?;
-    let (mut omni_lock_config, omni_lock_script, sighash_lock_script) = {
+    let (mut omni_lock_config, omni_lock_script) = {
         let sender_pubkey = PublicKey::from_secret_key(&SECP256K1, &sender_privkey);
         let sender_pubkey_hash =
             H160::from_slice(&blake2b_256(&sender_pubkey.serialize()[..])[0..20]).unwrap();
-        let sighash_script = Script::new_builder()
-            .code_hash(SIGHASH_TYPE_HASH.pack())
-            .hash_type(ScriptHashType::Type.into())
-            .args(Bytes::from(sender_pubkey_hash.as_bytes().to_vec()).pack())
-            .build();
-
         let mut config = OmniLockConfig::new_pubkey_hash(sender_pubkey_hash);
         config.set_opentx_mode();
         let omni_script = omni_script_id
@@ -200,7 +219,7 @@ pub fn build_order_tx(args: &GenOrderArgs) -> Result<TransactionView> {
             .as_builder()
             .args(config.build_args().pack())
             .build();
-        (config, omni_script, sighash_script)
+        (config, omni_script)
     };
 
     let mut cell_collector = DefaultCellCollector::new(args.ckb_rpc.as_str());
@@ -247,7 +266,7 @@ pub fn build_order_tx(args: &GenOrderArgs) -> Result<TransactionView> {
         Bytes::from(data)
     };
 
-    let fee_input_cell = query_sighash_cell(sighash_lock_script, &mut cell_collector)?;
+    let fee_input_cell = query_cell_by_lock(omni_lock_script.clone(), &mut cell_collector)?;
     let fee_output = {
         let input_capacity: u64 = fee_input_cell.output.capacity().unpack();
         let output_capacity = input_capacity - args.tx_fee.0;
@@ -289,17 +308,10 @@ pub fn build_order_tx(args: &GenOrderArgs) -> Result<TransactionView> {
         .outputs_data(tx_outputs_data)
         .build();
 
-    let mut unlockers = build_omnilock_unlockers(
+    let unlockers = build_omnilock_unlockers(
         vec![sender_privkey],
         omni_lock_config.clone(),
         omni_script_id,
-    );
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_privkey]);
-    let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
-    let sighash_script_id = ScriptId::new_type(SIGHASH_TYPE_HASH.clone());
-    unlockers.insert(
-        sighash_script_id,
-        Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
     );
 
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
@@ -338,11 +350,8 @@ pub fn build_merge_orders_tx(args: &MergeOrdersArgs) -> Result<TransactionView> 
         .expect("omni-lock cell dep");
     let omni_script_id = ScriptId::from(omni_dep_item.script_id.clone());
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
-    Ok(assemble_new_tx(
-        txs,
-        &tx_dep_provider,
-        omni_script_id.code_hash.pack(),
-    )?)
+    let assembled_tx = assemble_new_tx(txs, &tx_dep_provider, omni_script_id.code_hash.pack())?;
+    Ok(assembled_tx)
 }
 
 pub fn build_issue_udt_tx(args: &IssueUdtArgs) -> Result<TransactionView> {
@@ -662,7 +671,7 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
     Ok(tx)
 }
 
-fn query_sighash_cell(
+fn query_cell_by_lock(
     lock_script: Script,
     cell_collector: &mut dyn CellCollector,
 ) -> Result<LiveCell> {
@@ -671,9 +680,14 @@ fn query_sighash_cell(
     query.data_len_range = Some(ValueRangeOption::new_exact(0));
     let (cells, _) = cell_collector.collect_live_cells(&query, true)?;
     if cells.is_empty() {
+        let address = Address::new(
+            NetworkType::Testnet,
+            AddressPayload::from(lock_script),
+            true,
+        );
         return Err(anyhow!(
-            "cell not found for sighash script: {:?}",
-            lock_script
+            "cell not found for address: {}, you may transfer some capacity to this address",
+            address
         ));
     }
     Ok(cells[0].clone())
@@ -697,7 +711,10 @@ fn query_xudt_cell(
 
     let (cells, _) = cell_collector.collect_live_cells(&query, true)?;
     if cells.is_empty() {
-        return Err(anyhow!("xudt cell not found for owner: {}", owner));
+        return Err(anyhow!(
+            "xudt cell not found for owner: {}, you may use `new-empty-udt-cell` subcommand to create an empty xudt cell first",
+            owner
+        ));
     }
     Ok(cells[0].clone())
 }
