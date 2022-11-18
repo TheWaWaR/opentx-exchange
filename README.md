@@ -15,7 +15,9 @@ Commands:
   query-order-by-address   Query orders by the omni-lock address
   query-order-by-sell      Query orders by the sell information
   query-order-by-buy       Query orders by the buy information
-  gen-example-cell-deps    Generate example cell_deps.json
+  query-udt-amount         Query udt amount by owner and omni-lock address
   start-exchange           Start exchange jsonrpc server
+  gen-example-cell-deps    Generate example cell_deps.json
+  gen-shell-complete       Generate shell completer
   help                     Print this message or the help of the given subcommand(s)
 ```
