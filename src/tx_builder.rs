@@ -312,13 +312,22 @@ pub fn build_order_tx(args: &GenOrderArgs) -> Result<TransactionView> {
     let unlockers = build_omnilock_unlockers(
         vec![sender_privkey],
         omni_lock_config.clone(),
-        omni_script_id,
+        omni_script_id.clone(),
     );
 
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
     let (tx, _) = fill_placeholder_witnesses(base_tx, &tx_dep_provider, &unlockers)?;
-    let wit = OpentxWitness::new_sig_all_relative(&tx, Some(0xdeadbeef)).unwrap();
+
+    let mut rng = rand::thread_rng();
+    let salt: u32 = rng.gen();
+    let wit = OpentxWitness::new_sig_all_relative(&tx, Some(salt))?;
     omni_lock_config.set_opentx_input(wit);
+    let unlockers = build_omnilock_unlockers(
+        vec![sender_privkey],
+        omni_lock_config.clone(),
+        omni_script_id,
+    );
+
     let tx = OmniLockTransferBuilder::update_opentx_witness(
         tx,
         &omni_lock_config,
@@ -653,7 +662,7 @@ pub fn build_cancel_order_tx(args: &CancelOrderArgs) -> Result<TransactionView> 
         sighash_lock_script,
         placeholder_witness,
         // FIXME: this is only work around.
-        args.fee_rate + 200,
+        args.fee_rate + 100,
     );
     let mut cell_collector = DefaultCellCollector::new(args.ckb_rpc.as_str());
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 0);
