@@ -10,7 +10,7 @@ anyhow = "1.0.66"
 ckb-crypto = "0.105.1"
 ckb-hash = "0.105.1"
 ckb-jsonrpc-types = "0.105.1"
-ckb-sdk = { git = "https://github.com/liuck8080/ckb-sdk-rust.git", branch = "opentx_sign_tx", version = "2.3.0" }
+ckb-sdk = { git = "https://github.com/TheWaWaR/ckb-sdk-rust.git", branch = "opentx_sign_tx", version = "2.3.0" }
 ckb-types = "0.105.1"
 clap = { version = "4.0.25", features = ["derive", "env"] }
 clap_complete = "4.0.5"

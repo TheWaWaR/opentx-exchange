@@ -176,6 +176,7 @@ impl ExchangeRpc for ExchangeRpcImpl {
             ));
         }
         let tx_view = packed::Transaction::from(tx).into_view();
+        let mut removed_tx: Option<(H256, H256)> = None;
         if let Some(item) = self.orders.get(&order_key.pair_order()) {
             let omni_dep_item = self
                 .cell_deps
@@ -189,7 +190,7 @@ impl ExchangeRpc for ExchangeRpcImpl {
                 let tx_dep_provider =
                     DefaultTransactionDependencyProvider::new(self.ckb_rpc.as_str(), 0);
                 let assembled_tx = assemble_new_tx(
-                    vec![tx_view, pair_tx_view],
+                    vec![tx_view.clone(), pair_tx_view],
                     &tx_dep_provider,
                     omni_script_id.code_hash.pack(),
                 )
@@ -203,14 +204,17 @@ impl ExchangeRpc for ExchangeRpcImpl {
                 send_tx_to_ckb(assembled_tx, self.ckb_rpc.as_str()).map_err(|err| {
                     Error::invalid_params(format!("send assembled tx to ckb error: {}", err))
                 })?;
-                log::info!("remove matched tx: {:#x}", pair_tx_hash);
-                self.remove_tx(pair_tx_hash);
-
-                return Ok(format!(
-                    "order pair success! matched tx: {:#x}, assembled tx: {:#x}",
-                    pair_tx_hash, assembled_tx_hash
-                ));
+                removed_tx = Some((pair_tx_hash.clone(), assembled_tx_hash));
             }
+        }
+        if let Some((removed_tx_hash, assembled_tx_hash)) = removed_tx {
+            log::info!("remove matched tx: {:#x}", removed_tx_hash);
+            self.remove_tx(&removed_tx_hash);
+
+            return Ok(format!(
+                "order pair success! matched tx: {:#x}, assembled tx: {:#x}",
+                removed_tx_hash, assembled_tx_hash
+            ));
         }
 
         let lock_script = lock_script_opt.unwrap();

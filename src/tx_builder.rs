@@ -338,8 +338,20 @@ pub fn build_order_tx(args: &GenOrderArgs) -> Result<TransactionView> {
 
     // NOTE: the transaction already capacity balanced
 
-    let (tx, still_locked_groups) = unlock_tx(tx, &tx_dep_provider, &unlockers)?;
+    let (mut tx, still_locked_groups) = unlock_tx(tx, &tx_dep_provider, &unlockers)?;
     log::debug!("still locked groups: {:?}", still_locked_groups);
+
+    // FIXME: remove this when ckb-sdk fixed.
+    //   This code is for fill enough witness so that merged transaction will not failed.
+    if tx.inputs().len() > tx.witnesses().len() {
+        for _ in 0..(tx.inputs().len() - tx.witnesses().len()) {
+            tx = tx
+                .as_advanced_builder()
+                .witness(Bytes::new().pack())
+                .build();
+        }
+    }
+
     assert!(still_locked_groups.is_empty());
 
     Ok(tx)

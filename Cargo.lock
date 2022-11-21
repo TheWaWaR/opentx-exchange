@@ -316,7 +316,6 @@ dependencies = [
 [[package]]
 name = "ckb-sdk"
 version = "2.3.0"
-source = "git+https://github.com/liuck8080/ckb-sdk-rust.git?branch=opentx_sign_tx#205c936738fd8b7b8faee61bad93c0845bbd7c70"
 dependencies = [
  "anyhow",
  "bech32",
